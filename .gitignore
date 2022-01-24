@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+.idea/
+log/
+venv/
+
+# DataBases
+*.sqlite3
+*.db
+pg_data
+
+# Terraform
+.terraform
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+
+# Scrapy stuff:
+.scrapy
+
+# Environments
+.env
+.ven
+
+# Media
+*.jpg
+*.png
+
+# Data
+*.json
+*.csv
+
+
