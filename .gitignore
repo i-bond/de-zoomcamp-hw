@@ -22,6 +22,11 @@ terraform.tfstate.backup
 .env
 .ven
 
+# Airflow
+logs
+credentials
+
+
 # Media
 *.jpg
 *.png
