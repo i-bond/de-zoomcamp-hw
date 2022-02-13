@@ -20,8 +20,9 @@ AIRFLOW_HOME = os.environ.get("AIRFLOW_HOME", "/opt/airflow/")
 # AIRFLOW_HOME="/opt/airflow/"
 # OUTPUT_FILE_NAME="yellow_taxi_2021-01.csv"
 
-FILE_URL= 'https://s3.amazonaws.com/nyc-tlc/misc/taxi+_zone_lookup.csv'
-CSV_NAME = 'zone_lookup.csv'
+URL_PREFIX = 'https://s3.amazonaws.com/nyc-tlc/trip+data'
+URL_TEMPLATE = URL_PREFIX + '/green_tripdata_{{ execution_date.strftime(\'%Y-%m\') }}.csv' # Jinja parametrization
+CSV_NAME = 'green_tripdata_{{ execution_date.strftime(\'%Y-%m\') }}.csv' # wc -l output_2021-01.csv - check rows_n
 
 OBJECT_NAME_PARQUET = CSV_NAME.replace('.csv', '.parquet')
 OUTPUT_FILE_PARQUET = AIRFLOW_HOME + "/" + OBJECT_NAME_PARQUET
@@ -62,33 +63,36 @@ def upload_to_gcs(bucket, object_name, local_file):
 
 default_args = {
     "owner": "airflow",
-    "schedule_interval": '@once',
-    "start_date": days_ago(1),
-    "catchup": False,
+    "start_date": datetime(2019, 1, 1),
+    "end_date":  datetime(2020, 12, 1),
+    "depends_on_past": True,
     "retries": 1,
 }
 
+
 with DAG(
-    dag_id="zone_lookup_dag", # unique id
+    dag_id="green_taxi_dag", # unique id
+    schedule_interval="@monthly",
     default_args=default_args,
+    catchup=True,
     max_active_runs=1,
-    tags=['2-data-ingestion'],
+    tags=['4-analytics-engineering'],
 ) as dag:
     download_dataset = BashOperator(
-        task_id="download_dataset_zones",  # unique
-        bash_command=f"curl -sSL {FILE_URL} > {AIRFLOW_HOME + '/' + CSV_NAME} && " \
+        task_id="download_dataset_green", # unique
+        bash_command=f"curl -sSL {URL_TEMPLATE} > {AIRFLOW_HOME + '/' + CSV_NAME} && " \
                      f"echo {AIRFLOW_HOME + '/' + CSV_NAME}",
     )
 
     check_row_count = BashOperator(  # bash scripting -> row_count, # use only f"<string>"
-        task_id="check_dataset_zones",
+        task_id="check_green",
         bash_command=f"ROW_N=( $(wc -l {AIRFLOW_HOME + '/' + CSV_NAME}) ) && " \
                      f"echo $ROW_N",
         do_xcom_push=False,
     )
 
-    format_to_parquet = PythonOperator(
-        task_id="format_to_parquet_zones",
+    format_to_parquet=PythonOperator(
+        task_id="format_to_parquet_green",
         python_callable=format_to_parquet,
         op_kwargs={
             "csv_file": f"{AIRFLOW_HOME}/{CSV_NAME}",
@@ -96,21 +100,24 @@ with DAG(
     )
 
     load_to_gcs = PythonOperator(
-        task_id="load_to_gcs_zones",
+        task_id="raw_data_green",
         python_callable=upload_to_gcs,
         op_kwargs={
             "bucket": BUCKET,
-            "object_name": f"raw_data_zones/{OBJECT_NAME_PARQUET}",
+            "object_name": f"raw_data_green/{OBJECT_NAME_PARQUET}",
             "local_file": f"{OUTPUT_FILE_PARQUET}",
         },
     )
 
-    # clear_space = BashOperator(
-    #     task_id="clear_space_zones",
-    #     bash_command=f"CSV_FILE={AIRFLOW_HOME}/{CSV_NAME} && " \
-    #                  f"PARQUET_FILE={AIRFLOW_HOME}/{OBJECT_NAME_PARQUET} && " \
-    #                  "rm $CSV_FILE $PARQUET_FILE",
-    #     do_xcom_push=False,
-    # )
+    clear_space = BashOperator(
+        task_id="clear_space_green",
+        bash_command=f"CSV_FILE={AIRFLOW_HOME}/{CSV_NAME} && " \
+                     f"PARQUET_FILE={AIRFLOW_HOME}/{OBJECT_NAME_PARQUET} && " \
+                     "rm $CSV_FILE $PARQUET_FILE",
+        do_xcom_push=False,
+    )
 
-download_dataset >> check_row_count >> format_to_parquet >> load_to_gcs #>> clear_space
+download_dataset >> check_row_count >> format_to_parquet >> load_to_gcs >> clear_space
+
+
+

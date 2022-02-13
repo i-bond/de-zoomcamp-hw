@@ -17,6 +17,15 @@ PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 BUCKET = os.environ.get("GCP_GCS_BUCKET")
 AIRFLOW_HOME = os.environ.get("AIRFLOW_HOME", "/opt/airflow/")
 
+# AIRFLOW_HOME="/opt/airflow/"
+# OUTPUT_FILE_NAME="yellow_taxi_2021-01.csv"
+
+
+# URL_PREFIX = 'https://s3.amazonaws.com/nyc-tlc/trip+data'
+# URL_TEMPLATE = URL_PREFIX + '/yellow_tripdata_{{ execution_date.strftime(\'%Y-%m\') }}.csv' # Jinja parametrization
+# OUTPUT_FILE_NAME = 'yellow_taxi_{{ execution_date.strftime(\'%Y-%m\') }}.csv' # wc -l output_2021-01.csv - check rows_n
+# TABLE_NAME = 'yellow_taxi_{{ execution_date.strftime(\'%Y_%m\') }}'
+
 
 URL_PREFIX = 'https://s3.amazonaws.com/nyc-tlc/trip+data'
 URL_TEMPLATE = URL_PREFIX + '/fhv_tripdata_{{ execution_date.strftime(\'%Y-%m\') }}.csv' # Jinja parametrization
@@ -33,7 +42,7 @@ def format_to_parquet(ti): # convert .csv to parquet
     table = pv.read_csv(csv_file)
     pq.write_table(table, csv_file.replace('.csv', '.parquet'))
     return csv_file.replace('.csv', '.parquet') # will be added to xcoms with default return_value
-
+    # ti.xcom_push(key="parquet_file_fhv", value=)
 
 # NOTE: takes 20 mins, at an upload speed of 800kbps. Faster if your internet has a better upload speed
 def upload_to_gcs(ti):
@@ -63,7 +72,7 @@ def upload_to_gcs(ti):
 
 default_args = {
     "owner": "airflow",
-    "start_date": datetime(2019, 1, 1),
+    "start_date": datetime(2019, 1, 1), # 2019 #test - datetime(2020, 4-6, 1)
     "end_date":  datetime(2019, 12, 1),
     "depends_on_past": True,
     "retries": 1,
@@ -71,7 +80,7 @@ default_args = {
 
 
 with DAG(
-    dag_id="fhv_dag_xcom",
+    dag_id="fhv_dag_xcom.", # unique id
     schedule_interval="@monthly",
     default_args=default_args,
     catchup=True,
@@ -79,7 +88,7 @@ with DAG(
     tags=['2-data-ingestion'],
 ) as dag:
     download_dataset = BashOperator(
-        task_id="download_dataset_fhv",
+        task_id="download_dataset_fhv", # unique
         bash_command=f"curl -sSL {URL_TEMPLATE} > {AIRFLOW_HOME + '/' + OUTPUT_FILE_NAME} && " \
                      f"echo {AIRFLOW_HOME + '/' + OUTPUT_FILE_NAME}",
     )
@@ -100,6 +109,11 @@ with DAG(
     load_to_gcs = PythonOperator(
         task_id="load_to_gcs",
         python_callable=upload_to_gcs,
+        # op_kwargs={
+        #     "bucket": BUCKET,
+        #     "object_name": f"test_folder/{OBJECT_NAME_PARQUET}",
+        #     "local_file": f"{OUTPUT_FILE_PARQUET}",
+        # },
     )
 
     clear_space = BashOperator(
@@ -113,3 +127,8 @@ with DAG(
 download_dataset >> check_row_count >> format_to_parquet >> load_to_gcs >> clear_space
 
 
+
+# bash commands
+# SOME_O=$(wc -l /opt/airflow/yellow_taxi_2020-05.csv) && echo ${SOME_O[0]}
+# arr=($SOME_O)
+# echo ${arr[0]}
